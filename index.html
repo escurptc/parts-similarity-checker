@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Similarity Matrix Tool</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <h1>Similarity Matrix Comparison</h1>
+
+    <button id="add-json">➕ Add JSON</button>
+    <button id="compare">🔍 Compare</button>
+
+    <div id="json-inputs">
+        <div class="json-block">
+            <textarea placeholder="Paste JSON here"></textarea>
+        </div>
+    </div>
+
+    <h2>Discrepancies</h2>
+    <div id="discrepancies"></div>
+
+    <h2>Search Comparison</h2>
+    <input type="text" id="search-input" placeholder="Type part name..." autocomplete="off" />
+    <div id="autocomplete-list" class="autocomplete-items"></div>
+    <button id="search-button">Search</button>
+    <button id="reset-button">Reset</button>
+    <div id="search-results"></div>
+
+    <h2>Similarity Matrix</h2>
+    <div id="results-table"></div>
+
+    <script src="main.js"></script>
+</body>
+
+</html>

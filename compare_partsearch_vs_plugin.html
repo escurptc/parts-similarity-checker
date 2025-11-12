@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0" />
+    <title>Compare Fetch Duplicates Responses</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', sans-serif;
+        background-color: #f4f6f8;
+        margin: 0;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: auto;
+        background: #fff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+      }
+
+      h2 {
+        margin-top: 0;
+        font-size: 24px;
+        color: #333;
+      }
+
+      textarea {
+        width: 100%;
+        height: 150px;
+        margin-bottom: 15px;
+        padding: 10px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        resize: vertical;
+      }
+
+      button {
+        background-color: #0078d4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-bottom: 20px;
+      }
+
+      button:hover {
+        background-color: #005ea2;
+      }
+
+      .result {
+        margin-top: 20px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f0f0f0;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+
+      tr:hover {
+        background-color: #f9f9f9;
+      }
+
+      label {
+        font-weight: bold;
+        display: block;
+        margin-top: 20px;
+        margin-bottom: 5px;
+      }
+
+      input[type="text"] {
+        padding: 8px;
+        width: 300px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+
+      input[type="checkbox"] {
+        margin-right: 8px;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h2>Part Similarity Comparison: PartSearch API vs Windchill Plugin</h2>
+      <p style="margin-top: 10px; font-size: 16px; color: #555;">
+        This tool compares the <code>fetchDuplicates</code> responses from the PartSearch API and the Windchill Plugin.
+        It highlights discrepancies in part similarity scores and allows full inspection of all comparisons.
+      </p>
+      <textarea id="json1"
+                placeholder="Paste fetchDuplicates response from PartSearch API (uses id as masterId)"></textarea>
+      <textarea id="json2"
+                placeholder="Paste fetchDuplicates response from Windchill Plugin (uses masterId)"></textarea>
+      <button onclick="compareJSONs()">Compare Similarity Matrices</button>
+      <div class="result"
+           id="result"></div>
+    </div>
+
+    <script>
+      function normalize(json, sourceType) {
+        const clusters = Array.isArray(json.clusters) ? json.clusters : [];
+        return clusters.map(cluster => ({
+          id: cluster.id,
+          parts: cluster.parts.map(part => ({
+            masterId: sourceType === 'id' ? part.id : part.masterId,
+            id: part.id,
+            objectId: part.attributes?.objectId || null
+          })),
+          similarityMatrix: cluster.similarityMatrix || [],
+          cohesion: cluster.cohesion || null
+        }));
+      }
+
+      function extractMatrixPairs(parts, matrix) {
+        const pairs = [];
+        for (let i = 0; i < matrix.length; i++) {
+          for (let j = 0; j < matrix[i].length; j++) {
+            const partA = parts[i];
+            const partB = parts[i + j + 1];
+            const score = matrix[i][j];
+            pairs.push({
+              pair: [partA.masterId, partB.masterId],
+              score,
+              displayA: { id: partA.id, objectId: partA.objectId },
+              displayB: { id: partB.id, objectId: partB.objectId }
+            });
+          }
+        }
+        return pairs;
+      }
+
+      function compareMatrices(norm1, norm2) {
+        const results = [];
+
+        norm1.forEach(cluster1 => {
+          const cluster2 = norm2.find(c => c.id === cluster1.id);
+          if (!cluster2) return;
+
+          const pairs1 = extractMatrixPairs(cluster1.parts, cluster1.similarityMatrix);
+          const pairs2 = extractMatrixPairs(cluster2.parts, cluster2.similarityMatrix);
+
+          const map2 = new Map(pairs2.map(p => [p.pair.join('|'), p.score]));
+
+          const allPairs = [];
+          const mismatches = [];
+
+          pairs1.forEach(p1 => {
+            const key = p1.pair.join('|');
+            const score2 = map2.get(key);
+            const entry = {
+              pair: p1.pair,
+              scoreJSON1: p1.score,
+              scoreJSON2: score2,
+              displayA: p1.displayA,
+              displayB: p1.displayB
+            };
+            allPairs.push(entry);
+            if (score2 !== undefined && p1.score !== score2) {
+              mismatches.push(entry);
+            }
+          });
+
+          results.push({ allPairs, mismatches });
+        });
+
+        return results;
+      }
+
+      function displayDiscrepancies(results) {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = '<h3>Discrepancies in Part Similarity Scores</h3>';
+
+        const allPairs = results.flatMap(r => r.allPairs);
+        const mismatches = results.flatMap(r => r.mismatches);
+
+        const mismatchTable = document.createElement('table');
+        mismatchTable.innerHTML = `
+        <thead>
+          <tr>
+            <th>Part A</th>
+            <th>Part B</th>
+            <th>Similarity JSON1</th>
+            <th>Similarity JSON2</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${mismatches.map(p => `
+            <tr>
+              <td>[${p.displayA.objectId}] ${p.displayA.id}</td>
+              <td>[${p.displayB.objectId}] ${p.displayB.id}</td>
+              <td>${p.scoreJSON1}</td>
+              <td>${p.scoreJSON2}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+        resultDiv.appendChild(mismatchTable);
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.innerHTML = `<input type="checkbox" id="toggle-full"> Show full similarity comparison table`;
+        resultDiv.appendChild(toggleLabel);
+
+        const searchContainer = document.createElement('div');
+        searchContainer.className = 'hidden';
+        searchContainer.innerHTML = `
+        <label for="search-input">Search full similarity table by part ID or objectId:</label>
+        <input type="text" id="search-input" placeholder="Type part ID or objectId...">
+      `;
+        resultDiv.appendChild(searchContainer);
+
+        const fullTable = document.createElement('table');
+        fullTable.className = 'hidden';
+        fullTable.id = 'full-similarity-table';
+        fullTable.innerHTML = `
+        <thead>
+          <tr>
+            <th>Part A</th>
+            <th>Part B</th>
+            <th>Similarity JSON1</th>
+            <th>Similarity JSON2</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allPairs.map(p => `
+            <tr>
+              <td>[${p.displayA.objectId}] ${p.displayA.id}</td>
+              <td>[${p.displayB.objectId}] ${p.displayB.id}</td>
+              <td>${p.scoreJSON1}</td>
+              <td>${p.scoreJSON2 !== undefined ? p.scoreJSON2 : 'N/A'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+        resultDiv.appendChild(fullTable);
+
+        document.getElementById('toggle-full').addEventListener('change', function () {
+          const show = this.checked;
+          fullTable.className = show ? '' : 'hidden';
+          searchContainer.className = show ? '' : 'hidden';
+        });
+
+        document.getElementById('search-input').addEventListener('input', function () {
+          const query = this.value.toLowerCase();
+          const rows = fullTable.querySelectorAll('tbody tr');
+          rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? '' : 'none';
+          });
+        });
+      }
+
+      function compareJSONs() {
+        try {
+          const json1 = JSON.parse(document.getElementById('json1').value);
+          const json2 = JSON.parse(document.getElementById('json2').value);
+          const norm1 = normalize(json1, 'id');
+          const norm2 = normalize(json2, 'masterId');
+          const results = compareMatrices(norm1, norm2);
+          displayDiscrepancies(results);
+        } catch (e) {
+          document.getElementById('result').textContent = 'Error: ' + e.message;
+        }
+      }
+    </script>
+  </body>
+
+</html>
